@@ -16,8 +16,8 @@ def run_main():
     cap.set(4, 720)
     fourcc = cv.VideoWriter_fourcc(*'H264')
     cap.set(cv.CAP_PROP_FOURCC, fourcc)
-    cap.set(cv.CAP_PROP_SATURATION, 100)
-    cap.set(cv.CAP_PROP_BRIGHTNESS, 140)
+    cap.set(cv.CAP_PROP_SATURATION, 110)
+    cap.set(cv.CAP_PROP_BRIGHTNESS, 160)
 
 
     #clf = load_model()
@@ -47,6 +47,9 @@ def run_main():
 
         contours, hierarchy = cv.findContours(closing, cv.RETR_EXTERNAL,
                                                cv.CHAIN_APPROX_SIMPLE)
+        circles = []
+
+
         for cnt in contours:
             area = cv.contourArea(cnt)
             if area < 1500 or area > 9000:
@@ -57,6 +60,7 @@ def run_main():
             axes = ellipse[1]
             minor, major = axes
             if (major/minor < 1.5):
+                circles.append(ellipse)
                 cv.ellipse(gray_blur, ellipse, (0, 255, 255), 2)
         cv.imshow('new', closing)
         cv.imshow('blur', gray_blur)
@@ -64,26 +68,33 @@ def run_main():
 
 
 
+        ellipses = []
+        for circ in circles:
+            coords = circ[0]
+            x, y = coords
+            axes = circ[1]
+            minor, major = axes
+
+            ellipses.append([x, y, (major + minor)/4.0])
 
 
-
-        rows = gray.shape[0]
-        circles = cv.HoughCircles(gray_end, cv.HOUGH_GRADIENT, 1, rows / 11, param1=250, param2=35, minRadius=15,
-                                    maxRadius=int(rows / 5))
+        #rows = gray.shape[0]
+        #circles = cv.HoughCircles(gray_end, cv.HOUGH_GRADIENT, 1, rows / 11, param1=250, param2=35, minRadius=15,
+        #                            maxRadius=int(rows / 5))
 
         count = 0
         total = 0
-        if circles is not None:
+        if len(ellipses) > 0:
             diameter = []
             materials = []
             coordinates = []
 
             # append radius to list of diameters (we don't bother to multiply by 2)
-            for (x, y, r) in circles[0, :]:
-                diameter.append(r)
+            for ell in ellipses:
+                diameter.append(ell[2])
 
             # convert coordinates and radii to integers
-            circles = np.round(circles[0, :]).astype("int")
+            circles = np.round(ellipses).astype("int")
 
             # loop over coordinates and radii of the circles
             for (x, y, d) in circles:
@@ -141,25 +152,25 @@ def run_main():
                 t = "Unknown"
 
                 # compare to known diameters with some margin for error
-                if math.isclose(d, 25.0, abs_tol=1.25) and m == "Silver":
+                if math.isclose(d, 25.0, abs_tol=1.5) and m == "Silver":
                     t = "5 rub"
                     total += 5
                 elif math.isclose(d, 23.0, abs_tol=1.75) and m == "Silver":
                     t = "2 rub"
                     total += 2
-                elif math.isclose(d, 19.5, abs_tol=1.75) and m == "Silver":
+                elif math.isclose(d, 20.5, abs_tol=1.55) and m == "Silver":
                     t = "1 rub"
                     total += 1
-                elif math.isclose(d, 17.5, abs_tol=2.5) and m == "Silver":
+                elif math.isclose(d, 18.5, abs_tol=2.5) and m == "Silver":
                     t = "0.05 rub"
                     total += 0.05
-                elif math.isclose(d, 22.0, abs_tol=2.75) and m == "Gold":
+                elif math.isclose(d, 22.0, abs_tol=1.75) and (m == "Bronze" or m == "Gold"):
                     t = "10 rub"
                     total += 10
-                elif math.isclose(d, 18.5, abs_tol=1.75) and m == "Gold":
+                elif math.isclose(d, 19.5, abs_tol=1.5) and (m == "Bronze" or m == "Gold"):
                     t = "0.50 rub"
                     total += 0.50
-                elif math.isclose(d, 16.5, abs_tol=2.75) and m == "Gold":
+                elif math.isclose(d, 17.5, abs_tol=3.75) and (m == "Bronze" or m == "Gold"):
                     t = "0.10 rub"
                     total += 0.10
 
