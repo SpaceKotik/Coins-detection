@@ -10,8 +10,6 @@ from sklearn.externals import joblib
 
 def run_main():
 
-    adf = None
-
     #cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
     cap = cv.VideoCapture(1)
     cap.set(3, 1280)
@@ -34,6 +32,39 @@ def run_main():
         clahe = cv.createCLAHE(clipLimit=5.0, tileGridSize=(8, 8))
         gray_end = clahe.apply(gray)
         gray_end = cv.GaussianBlur(gray_end, (9, 9), 0)
+
+
+
+        gray_blur = cv.GaussianBlur(gray, (11, 11), 0)
+
+        thresh = cv.adaptiveThreshold(gray_blur, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                       cv.THRESH_BINARY_INV, 11, 1)
+        kernel = np.ones((3, 3), np.uint8)
+        #closing = cv.morphologyEx(thresh, cv.MORPH_ERODE,
+        #                           kernel, iterations=1)
+        closing = cv.morphologyEx(thresh, cv.MORPH_CLOSE,
+                                  kernel, iterations=1)
+
+        contours, hierarchy = cv.findContours(closing, cv.RETR_EXTERNAL,
+                                               cv.CHAIN_APPROX_SIMPLE)
+        for cnt in contours:
+            area = cv.contourArea(cnt)
+            if area < 1500 or area > 9000:
+                continue
+            if len(cnt) < 5:
+                continue
+            ellipse = cv.fitEllipse(cnt)
+            axes = ellipse[1]
+            minor, major = axes
+            if (major/minor < 1.5):
+                cv.ellipse(gray_blur, ellipse, (0, 255, 255), 2)
+        cv.imshow('new', closing)
+        cv.imshow('blur', gray_blur)
+
+
+
+
+
 
 
         rows = gray.shape[0]
