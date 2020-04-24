@@ -7,66 +7,64 @@ from sklearn.model_selection import train_test_split
 from sklearn.externals import joblib
 
 
+# define Enum class
+class Enum(tuple):
+    __getattr__ = tuple.index
+
+
+# Enumerate material types for use in classifier
+Material = Enum(('Bronze', 'Silver', 'Gold'))
+
 
 def run_main():
+    clf = load_model()
+    #clf = train_model()
 
     #cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
     cap = cv.VideoCapture(1)
     cap.set(3, 1280)
     cap.set(4, 720)
-    fourcc = cv.VideoWriter_fourcc(*'H264')
-    cap.set(cv.CAP_PROP_FOURCC, fourcc)
-    cap.set(cv.CAP_PROP_SATURATION, 110)
+    cap.set(cv.CAP_PROP_SATURATION, 100)
     cap.set(cv.CAP_PROP_BRIGHTNESS, 160)
-
-
-    #clf = load_model()
-    clf = train_model()
+    cap.set(cv.CAP_PROP_FPS, 1)
 
     while True:
         ret, frame = cap.read()
-        #roi = frame[0:500, 0:500]
+        # roi = frame[0:500, 0:500]
         gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-
 
         clahe = cv.createCLAHE(clipLimit=5.0, tileGridSize=(8, 8))
         gray_end = clahe.apply(gray)
         gray_end = cv.GaussianBlur(gray_end, (9, 9), 0)
 
-
-
         gray_blur = cv.GaussianBlur(gray, (11, 11), 0)
 
-        thresh = cv.adaptiveThreshold(gray_blur, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                       cv.THRESH_BINARY_INV, 11, 1)
+        thresh = cv.adaptiveThreshold(gray_blur, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 11, 1)
         kernel = np.ones((3, 3), np.uint8)
-        #closing = cv.morphologyEx(thresh, cv.MORPH_ERODE,
+        # closing = cv.morphologyEx(thresh, cv.MORPH_ERODE,
         #                           kernel, iterations=1)
+        # closing = cv.morphologyEx(closing, cv.MORPH_DILATE,
+        #                          kernel, iterations=1)
         closing = cv.morphologyEx(thresh, cv.MORPH_CLOSE,
                                   kernel, iterations=1)
 
-        contours, hierarchy = cv.findContours(closing, cv.RETR_EXTERNAL,
-                                               cv.CHAIN_APPROX_SIMPLE)
+        contours, hierarchy = cv.findContours(closing, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
         circles = []
-
 
         for cnt in contours:
             area = cv.contourArea(cnt)
-            if area < 1500 or area > 9000:
+            if area < 1500 or area > 7000:
                 continue
             if len(cnt) < 5:
                 continue
             ellipse = cv.fitEllipse(cnt)
             axes = ellipse[1]
             minor, major = axes
-            if (major/minor < 1.5):
+            if major/minor < 1.5:
                 circles.append(ellipse)
                 cv.ellipse(gray_blur, ellipse, (0, 255, 255), 2)
-        cv.imshow('new', closing)
-        cv.imshow('blur', gray_blur)
-
-
-
+        cv.imshow('Adaptive threshold', closing)
+        cv.imshow('Blur', gray_blur)
 
         ellipses = []
         for circ in circles:
@@ -74,13 +72,7 @@ def run_main():
             x, y = coords
             axes = circ[1]
             minor, major = axes
-
             ellipses.append([x, y, (major + minor)/4.0])
-
-
-        #rows = gray.shape[0]
-        #circles = cv.HoughCircles(gray_end, cv.HOUGH_GRADIENT, 1, rows / 11, param1=250, param2=35, minRadius=15,
-        #                            maxRadius=int(rows / 5))
 
         count = 0
         total = 0
@@ -97,21 +89,21 @@ def run_main():
             circles = np.round(ellipses).astype("int")
 
             # loop over coordinates and radii of the circles
-            for (x, y, d) in circles:
+            for (x, y, diam) in circles:
                 count += 1
 
                 # add coordinates to list
                 coordinates.append((x, y))
 
                 # extract region of interest
-                roi = frame[y - d:y + d, x - d:x + d]
+                roi = frame[y - diam:y + diam, x - diam:x + diam]
 
                 # try recognition of material type and add result to list
-                material = predictMaterial(roi, clf)
+                material = predict_material(roi, clf)
                 materials.append(material)
 
                 # draw contour and results in the output image
-                cv.circle(frame, (x, y), d, (0, 255, 0), 2)
+                cv.circle(frame, (x, y), diam, (0, 255, 0), 2)
                 cv.putText(frame, material,
                            (x - 40, y), cv.FONT_HERSHEY_PLAIN,
                            1.5, (0, 255, 0), thickness=2, lineType=cv.LINE_AA)
@@ -121,21 +113,11 @@ def run_main():
             i = diameter.index(biggest)
 
             # scale everything according to maximum diameter
-            # todo: this should be chosen by the user
-            if materials[i] == "Label":
-                diameter = [x / biggest * 42.0 for x in diameter]
-                scaledTo = "Scaled to Label"
             if materials[i] == "Gold":
                 diameter = [x / biggest * 22.0 for x in diameter]
                 scaledTo = "Scaled to Gold"
             elif materials[i] == "Silver":
                 diameter = [x / biggest * 25.0 for x in diameter]
-                scaledTo = "Scaled to Silver"
-            elif materials[i] == "Silver":
-                diameter = [x / biggest * 23.0 for x in diameter]
-                scaledTo = "Scaled to Silver"
-            elif materials[i] == "Silver":
-                diameter = [x / biggest * 20.5 for x in diameter]
                 scaledTo = "Scaled to Silver"
             elif materials[i] == "Bronze":
                 diameter = [x / biggest * 19.5 for x in diameter]
@@ -146,36 +128,36 @@ def run_main():
             i = 0
             total = 0
             while i < len(diameter):
-                d = diameter[i]
-                m = materials[i]
+                diam = diameter[i]
+                mat = materials[i]
                 (x, y) = coordinates[i]
-                t = "Unknown"
+                coin_quantity = "Unknown"
 
                 # compare to known diameters with some margin for error
-                if math.isclose(d, 25.0, abs_tol=1.5) and m == "Silver":
-                    t = "5 rub"
+                if math.isclose(diam, 25.0, abs_tol=1.5) and mat == "Silver":
+                    coin_quantity = "5 rub"
                     total += 5
-                elif math.isclose(d, 23.0, abs_tol=1.75) and m == "Silver":
-                    t = "2 rub"
+                elif math.isclose(diam, 23.0, abs_tol=1.75) and mat == "Silver":
+                    coin_quantity = "2 rub"
                     total += 2
-                elif math.isclose(d, 20.5, abs_tol=1.55) and m == "Silver":
-                    t = "1 rub"
+                elif math.isclose(diam, 20.5, abs_tol=1.55) and mat == "Silver":
+                    coin_quantity = "1 rub"
                     total += 1
-                elif math.isclose(d, 18.5, abs_tol=2.5) and m == "Silver":
-                    t = "0.05 rub"
+                elif math.isclose(diam, 18.5, abs_tol=2.5) and mat == "Silver":
+                    coin_quantity = "0.05 rub"
                     total += 0.05
-                elif math.isclose(d, 22.0, abs_tol=1.75) and (m == "Bronze" or m == "Gold"):
-                    t = "10 rub"
+                elif math.isclose(diam, 22.0, abs_tol=1.75) and (mat == "Bronze" or mat == "Gold"):
+                    coin_quantity = "10 rub"
                     total += 10
-                elif math.isclose(d, 19.5, abs_tol=1.5) and (m == "Bronze" or m == "Gold"):
-                    t = "0.50 rub"
+                elif math.isclose(diam, 19.5, abs_tol=1.5) and (mat == "Bronze" or mat == "Gold"):
+                    coin_quantity = "0.50 rub"
                     total += 0.50
-                elif math.isclose(d, 17.5, abs_tol=3.75) and (m == "Bronze" or m == "Gold"):
-                    t = "0.10 rub"
+                elif math.isclose(diam, 17.5, abs_tol=3.75) and (mat == "Bronze" or mat == "Gold"):
+                    coin_quantity = "0.10 rub"
                     total += 0.10
 
                 # write result on output image
-                cv.putText(frame, t,
+                cv.putText(frame, coin_quantity,
                            (x - 40, y + 22), cv.FONT_HERSHEY_PLAIN,
                            1.8, (0, 0, 255), thickness=2, lineType=cv.LINE_AA)
                 i += 1
@@ -192,25 +174,17 @@ def run_main():
     cv.destroyAllWindows()
 
 
-
 def run_samples():
-
-    #cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+    # cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
     cap = cv.VideoCapture(1)
     cap.set(3, 1280)
     cap.set(4, 720)
-    #fourcc = cv.VideoWriter_fourcc(*'H264')
-    #cap.set(cv.CAP_PROP_FOURCC, fourcc)
     cap.set(cv.CAP_PROP_SATURATION, 100)
     cap.set(cv.CAP_PROP_BRIGHTNESS, 140)
 
-    clf = load_model()
-
-    currFile = 0
-
+    curr_file = 0
+    flag = False
     while True:
-
-
         ret, frame = cap.read()
         output = frame.copy()
         gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
@@ -219,7 +193,6 @@ def run_samples():
         # make picture more contrast
         cv.imshow("gray", gray)
 
-        rows = gray.shape[0]
         clahe = cv.createCLAHE(clipLimit=5.0, tileGridSize=(8, 8))
         gray = clahe.apply(gray)
         gray = cv.GaussianBlur(gray, (9, 9), 0)
@@ -229,21 +202,15 @@ def run_samples():
                                   maxRadius=int(rows / 3))
 
         if circles is not None:
-            currFile += 1
+            curr_file += 1
 
             detected_circles = np.uint16(np.around(circles))
             for (x, y, r) in detected_circles[0, :]:
                 cv.circle(output, (x, y), r, (255, 0, 0), 2)
 
-            # todo: refactor
-            diameter = []
-            materials = []
             coordinates = []
 
             count = 0
-            # append radius to list of diameters (we don't bother to multiply by 2)
-            for (x, y, r) in circles[0, :]:
-                diameter.append(r)
 
             # convert coordinates and radii to integers
             circles = np.round(circles[0, :]).astype("int")
@@ -266,13 +233,12 @@ def run_samples():
                     cv.circle(m, (w, h), d, (255), -1)
                     maskedCoin = cv.bitwise_and(roi, roi, mask=m)
                     if flag:
-                        cv.imwrite("extracted/{}coin{}.png".format(currFile, count), maskedCoin)
+                        cv.imwrite("extracted/{}coin{}.png".format(curr_file, count), maskedCoin)
 
 
         cv.imshow('output', output)
         flag = False
         if cv.waitKey(1) & 0xFF == ord('s'):
-            print('flag!')
             flag = True
         elif cv.waitKey(1) & 0xFF == ord('q'):
             break
@@ -280,30 +246,23 @@ def run_samples():
     cv.destroyAllWindows()
 
 
-def calcHistogram(img):
+def calc_histogram(img):
     # create mask
     m = np.zeros(img.shape[:2], dtype="uint8")
     (w, h) = (int(img.shape[1] / 2), int(img.shape[0] / 2))
     cv.circle(m, (w, h), 60, 255, -1)
-    #m = cv.GaussianBlur(m, (3, 3), 0)
+    # m = cv.GaussianBlur(m, (3, 3), 0)
 
     # calcHist expects a list of images, color channels, mask, bins, ranges
-    #h = cv.calcHist([img], [0, 1, 2], m, [8, 8, 8], [0, 256, 0, 256, 0, 256])
     h = cv.calcHist([img], [0, 1, 2], m, [8, 8, 8], [0, 384, 0, 384, 0, 384])
-    # return normalized "flattened" histogram
+    # return normalized flattened histogram
     return cv.normalize(h, h).flatten()
 
 
-def calcHistFromFile(file):
+def calc_hist_from_file(file):
     img = cv.imread(file)
-    return calcHistogram(img)
+    return calc_histogram(img)
 
-
-# define Enum class
-class Enum(tuple): __getattr__ = tuple.index
-
-# Enumerate material types for use in classifier
-Material = Enum(('Bronze', 'Silver', 'Gold', 'Label'))
 
 def load_model():
     clf = joblib.load('trained_model.pkl')
@@ -311,27 +270,27 @@ def load_model():
 
 
 def train_model():
-    sample_images_Gold = glob.glob("samples/real/Gold/*")
-    sample_images_Silver = glob.glob("samples/real/Silver/*")
-    sample_images_Bronze = glob.glob("samples/real/Bronze/*")
+    sample_images_gold = glob.glob("samples/real/Gold/*")
+    sample_images_silver = glob.glob("samples/real/Silver/*")
+    sample_images_bronze = glob.glob("samples/real/Bronze/*")
 
     x = []
     y = []
 
-    for i in sample_images_Bronze:
-        x.append(calcHistFromFile(i))
+    for i in sample_images_bronze:
+        x.append(calc_hist_from_file(i))
         y.append(Material.Bronze)
 
-    for i in sample_images_Gold:
-        x.append(calcHistFromFile(i))
+    for i in sample_images_gold:
+        x.append(calc_hist_from_file(i))
         y.append(Material.Gold)
 
-    for i in sample_images_Silver:
-        x.append(calcHistFromFile(i))
+    for i in sample_images_silver:
+        x.append(calc_hist_from_file(i))
         y.append(Material.Silver)
 
     # clf = MLPClassifier(solver="lbfgs")
-    clf = MLPClassifier(solver="adam", hidden_layer_sizes=(100), activation='relu', max_iter=600, verbose=True)
+    clf = MLPClassifier(solver="adam", hidden_layer_sizes=100, activation='relu', max_iter=600, verbose=True)
 
     # split samples into training and test data
     X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=0.3)
@@ -345,9 +304,9 @@ def train_model():
     return clf
 
 
-def predictMaterial(roi, clf):
+def predict_material(roi, clf):
     # calculate feature vector for region of interest
-    hist = calcHistogram(roi)
+    hist = calc_histogram(roi)
     # predict material type
     s = clf.predict([hist])
     # return predicted material type
@@ -356,5 +315,4 @@ def predictMaterial(roi, clf):
 
 if __name__ == "__main__":
     run_main()
-    #run_samples()
-
+    # run_samples()
