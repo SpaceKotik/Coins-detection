@@ -24,9 +24,8 @@ def run_main():
     cap = cv.VideoCapture(1)
     cap.set(3, 1280)
     cap.set(4, 720)
-    cap.set(cv.CAP_PROP_SATURATION, 100)
+    cap.set(cv.CAP_PROP_SATURATION, 80)
     cap.set(cv.CAP_PROP_BRIGHTNESS, 160)
-    cap.set(cv.CAP_PROP_FPS, 1)
 
     while True:
         ret, frame = cap.read()
